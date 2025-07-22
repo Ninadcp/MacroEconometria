@@ -1,0 +1,11 @@
+País,Variable,Lag_BIC,Estadístico_ADF,Valor_crítico_5pct,Decisión
+Chile,imacec,1,-2.029,-3.42,No rechazo H0 (tiene raíz unitaria)
+Chile,ipc_sae,1,1.288,-3.42,No rechazo H0 (tiene raíz unitaria)
+Chile,tcn_chile,1,-2.286,-3.42,No rechazo H0 (tiene raíz unitaria)
+Chile,embi_chile,1,-4.037,-3.42,Rechazo H0 (es estacionaria)
+Chile,tpm_chile,1,-2.45,-3.42,No rechazo H0 (tiene raíz unitaria)
+México,igae,1,-4.377,-3.42,Rechazo H0 (es estacionaria)
+México,inpc,1,1.294,-3.42,No rechazo H0 (tiene raíz unitaria)
+México,tcn_mexico,1,-2.56,-3.42,No rechazo H0 (tiene raíz unitaria)
+México,embi_mexico,1,-4.111,-3.42,Rechazo H0 (es estacionaria)
+México,tpm_mexico,1,-0.874,-3.42,No rechazo H0 (tiene raíz unitaria)
