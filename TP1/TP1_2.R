@@ -1,4 +1,5 @@
-#VERSIÓN 20/07 05:16 HS
+#VERSIÓN 22/07 09:42 HS
+#Puse nombres = que el archivo de Franco
 
 library(urca)
 library(stringr)
@@ -9,8 +10,9 @@ library(vars)
 
 rm(list=ls())
 
-source("/Users/ninadicostanzopereira/Desktop/MacroMetrics/TP1/TP1_Procesamiento.R") #acá m limpia el global enviroment
-wd <- "/Users/ninadicostanzopereira/Desktop/MacroMetrics/TP1"
+source("/Users/ninadicostanzopereira/Desktop/MacroMetrics/MacroEconometria/TP1/TP1_Procesamiento.R") 
+#acá m limpia el global enviroment
+wd <- "/Users/ninadicostanzopereira/Desktop/MacroMetrics/MacroEconometria/TP1"
 output <- file.path(wd, "output")
 #Chile
 
@@ -114,7 +116,7 @@ var_mexico_diff <- cbind(igae_recortado, diff_inpc, diff_tcn_mexico, embi_mexico
 colnames(var_mexico_diff) <- c("igae", "d_inpc", "d_tcn_mexico", "embi_mexico", "d_tpm_mexico")
 
 VARselect(var_mexico_diff, lag.max = 12, type = "const")
-
+p <- 1
 # Acá también elijo 1 rezago NINA NINA VER
 
 # ================================
@@ -135,10 +137,11 @@ var_mexico_diff_ordered <- var_mexico_diff[, orden_mexico]
 # ---------- Chile ---------- #
 
 # Estimo el VAR reducido 
-var_chile_VAR <- vars::VAR(var_chile_diff_ordered, p = 1, type = "const")
+var_chile_VAR <- vars::VAR(var_chile_diff_ordered, p = p, type = "const")
 
 # Tamaño del sistema = 5
 m <- var_chile_VAR$K
+T <- var_chile_VAR$obs
 
 # Matrices de restricciones (AB-model)
 Amat_chile <- diag(m)
@@ -153,6 +156,92 @@ diag(Bmat_chile) <- NA
 
 # Estimación SVAR estructural (forma AB)
 svar_chile <- SVAR(var_chile_VAR, Amat = Amat_chile, Bmat = Bmat_chile, lrtest = FALSE)
+
+# SVAR Impact Matrix (Cholesky decomposition)
+S <- t(resid(var_chile_VAR)) %*% resid(var_chile_VAR) / (T - m * p - 1)
+P.chol <- t(chol(S))
+S
+
+# SVAR Impact Matrix (implied by AB model)
+P <- solve(svar_chile$A, svar_chile$B) # inv(A) %*% B
+S.SVAR <- P %*% t(P)
+S.SVAR
+
+# Other SVAR Parameters
+pars.R <- Bcoef(var_chile_VAR) # Reduced Form VAR
+pars.S <- solve(svar_chile$A, pars.R) # Structural Form VAR
+pars.R
+pars.S
+
+# SVAR Analysis ####
+
+source("/Users/ninadicostanzopereira/Desktop/MacroMetrics/MacroEconometria/PS2 2/PS2_SVAR_Tools.R")
+source("/Users/ninadicostanzopereira/Desktop/MacroMetrics/MacroEconometria/PS2 2/PS2_SVAR_Plots.R")
+
+H <- 24 # Horizon
+H.ERPT <- 240 # Horizon (ERPT)
+
+# IRF
+IRF_chile <- SVAR.sirf(svar_chile, H)
+dev.new()
+plot.sirf(IRF_chile, m, H)
+
+# IRF (cumulative) 
+IRF_chile.c <- SVAR.sirf(svar_chile, H, cumulative = TRUE)
+dev.new()
+plot.sirf(IRF_chile.c, m, H)
+
+# FEVD
+FEVD_chile <- SVAR.fevd(svar_chile, H)
+dev.new()
+plot.fevd(FEVD_chile, m, H)
+
+# HD
+HD_chile <- SVAR.hd(svar_chile)
+dev.new()
+plot.hd(var_chile_diff, HD_chile, m)
+
+# ERPT: Log-differences
+ERPT_chile <- SVAR.erpt(svar_chile, H.ERPT, 3, 2)
+dev.new()
+plot.erpt(ERPT_chile, H.ERPT)
+
+# # ERPT: Log-levels
+# ERPT <- SVAR.erpt(SVAR, H.ERPT, 3, 2, cumulative = FALSE)
+# plot.erpt(ERPT, H.ERPT)
+
+# Bootstrap Inference ####
+
+R <- 500 # Number of bootstrap replications
+type <- "nonparametric"
+gamma <- 0.95 # Confidence level
+
+# COMMENT ON THE IMPORTANCE OF MULTIVARIATE CONFIDENCE INTERVALS 
+
+# Bootstrap Replications
+Y.boot <- boot.replicate(var_chile_VAR, R, type)
+
+# IRF (Bootstrap)
+IRF.boot <- SVAR.sirf.boot(svar_chile, Amat = Amat_chile, Bmat = Bmat_chile, H, gamma, Y.boot)
+dev.new()
+plot.sirf.boot(IRF.boot, m, H)
+
+# Cumulative IRF (Bootstrap)
+IRF.c.boot <- SVAR.sirf.boot(SVAR, Amat, Bmat, H, gamma, Y.boot, cumulative = TRUE)
+dev.new()
+plot.sirf.boot(IRF.c.boot, m, H)
+
+# FEVD (Bootstrap)
+FEVD.boot <- SVAR.fevd.boot(SVAR, Amat, Bmat, H, gamma, Y.boot)
+plot.fevd.boot(FEVD.boot, m, H)
+
+# ERPT (Bootstrap): Log-differences
+ERPT.boot <- SVAR.erpt.boot(SVAR, Amat, Bmat, H.ERPT, 3, 2, gamma, Y.boot)
+plot.erpt.boot(ERPT.boot, H.ERPT)
+
+# # ERPT (Bootstrap): Log-levels
+# ERPT.boot <- SVAR.erpt.boot(SVAR, Amat, Bmat, H.ERPT, 3, 2, gamma, Y.boot, cumulative = TRUE)
+# plot.erpt.boot(ERPT.boot, H.ERPT)
 
 # IRFs
 irf_chile <- irf(svar_chile, impulse = "d_tpm_chile", response = colnames(var_chile_diff_ordered), 

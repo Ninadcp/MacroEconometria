@@ -4,7 +4,7 @@ library(seasonal)
 rm(list = ls(all.names = TRUE))
 gc()
 
-wd <- "/Users/ninadicostanzopereira/Desktop/MacroMetrics/TP1"
+wd <- "/Users/ninadicostanzopereira/Desktop/MacroMetrics/MacroEconometria/TP1"
 
 # Ruta a la carpeta de datos
 inputs <- file.path(wd, "Datos")
