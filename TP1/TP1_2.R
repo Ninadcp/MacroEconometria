@@ -11,7 +11,9 @@ library(vars)
 rm(list=ls())
 
 source("/Users/ninadicostanzopereira/Desktop/MacroMetrics/MacroEconometria/TP1/TP1_Procesamiento.R") 
-#acá m limpia el global enviroment
+source("/Users/ninadicostanzopereira/Desktop/MacroMetrics/MacroEconometria/PS2 2/PS2_SVAR_Tools.R")
+source("/Users/ninadicostanzopereira/Desktop/MacroMetrics/MacroEconometria/PS2 2/PS2_SVAR_Plots.R")
+
 wd <- "/Users/ninadicostanzopereira/Desktop/MacroMetrics/MacroEconometria/TP1"
 output <- file.path(wd, "output")
 #Chile
@@ -131,167 +133,189 @@ orden_mexico <- c("d_inpc", "igae", "d_tpm_mexico", "d_tcn_mexico", "embi_mexico
 var_mexico_diff_ordered <- var_mexico_diff[, orden_mexico]
 
 # ================================
-# 2(c) - SVAR e IRFs
+# 2(c) - SVAR e IRFs: CHILE
 # ================================
 
-# ---------- Chile ---------- #
-
-# Estimo el VAR reducido 
+# Estimación VAR reducido
 var_chile_VAR <- vars::VAR(var_chile_diff_ordered, p = p, type = "const")
 
-# Tamaño del sistema = 5
+# Dimensiones del sistema
 m <- var_chile_VAR$K
 T <- var_chile_VAR$obs
 
-# Matrices de restricciones (AB-model)
+# Matrices estructurales (AB)
 Amat_chile <- diag(m)
 for (i in 2:m) {
   for (j in 1:(i - 1)) {
     Amat_chile[i, j] <- NA
   }
 }
-
 Bmat_chile <- matrix(0, m, m)
 diag(Bmat_chile) <- NA
 
-# Estimación SVAR estructural (forma AB)
+# Estimación SVAR estructural
 svar_chile <- SVAR(var_chile_VAR, Amat = Amat_chile, Bmat = Bmat_chile, lrtest = FALSE)
 
-# SVAR Impact Matrix (Cholesky decomposition)
+# Matrices de impacto
 S <- t(resid(var_chile_VAR)) %*% resid(var_chile_VAR) / (T - m * p - 1)
-P.chol <- t(chol(S))
-S
-
-# SVAR Impact Matrix (implied by AB model)
-P <- solve(svar_chile$A, svar_chile$B) # inv(A) %*% B
+P <- solve(svar_chile$A, svar_chile$B)
 S.SVAR <- P %*% t(P)
-S.SVAR
 
-# Other SVAR Parameters
-pars.R <- Bcoef(var_chile_VAR) # Reduced Form VAR
-pars.S <- solve(svar_chile$A, pars.R) # Structural Form VAR
-pars.R
-pars.S
+# Parámetros estructurales
+pars.R <- Bcoef(var_chile_VAR)
+pars.S <- solve(svar_chile$A, pars.R)
 
-# SVAR Analysis ####
-
-source("/Users/ninadicostanzopereira/Desktop/MacroMetrics/MacroEconometria/PS2 2/PS2_SVAR_Tools.R")
-source("/Users/ninadicostanzopereira/Desktop/MacroMetrics/MacroEconometria/PS2 2/PS2_SVAR_Plots.R")
-
-H <- 24 # Horizon
-H.ERPT <- 240 # Horizon (ERPT)
+# Horizonte de análisis
+H <- 24
+H.ERPT <- 240
+R <- 500
+gamma <- 0.95
+type <- "nonparametric"
 
 # IRF
 IRF_chile <- SVAR.sirf(svar_chile, H)
-dev.new()
+png(file.path(output, "IRF_Chile.png"), width = 1000, height = 800)
 plot.sirf(IRF_chile, m, H)
+dev.off()
 
-# IRF (cumulative) 
-IRF_chile.c <- SVAR.sirf(svar_chile, H, cumulative = TRUE)
-dev.new()
-plot.sirf(IRF_chile.c, m, H)
+# IRF acumulada
+IRF_chile_c <- SVAR.sirf(svar_chile, H, cumulative = TRUE)
+png(file.path(output, "IRF_Chile_Cumulative.png"), width = 1000, height = 800)
+plot.sirf(IRF_chile_c, m, H)
+dev.off()
 
 # FEVD
 FEVD_chile <- SVAR.fevd(svar_chile, H)
-dev.new()
+png(file.path(output, "FEVD_Chile.png"), width = 1000, height = 800)
 plot.fevd(FEVD_chile, m, H)
+dev.off()
 
 # HD
 HD_chile <- SVAR.hd(svar_chile)
-dev.new()
+png(file.path(output, "HD_Chile.png"), width = 1000, height = 800)
 plot.hd(var_chile_diff, HD_chile, m)
+dev.off()
 
-# ERPT: Log-differences
+# ERPT
 ERPT_chile <- SVAR.erpt(svar_chile, H.ERPT, 3, 2)
-dev.new()
+png(file.path(output, "ERPT_Chile.png"), width = 1000, height = 800)
 plot.erpt(ERPT_chile, H.ERPT)
-
-# # ERPT: Log-levels
-# ERPT <- SVAR.erpt(SVAR, H.ERPT, 3, 2, cumulative = FALSE)
-# plot.erpt(ERPT, H.ERPT)
-
-# Bootstrap Inference ####
-
-R <- 500 # Number of bootstrap replications
-type <- "nonparametric"
-gamma <- 0.95 # Confidence level
-
-# COMMENT ON THE IMPORTANCE OF MULTIVARIATE CONFIDENCE INTERVALS 
-
-# Bootstrap Replications
-Y.boot <- boot.replicate(var_chile_VAR, R, type)
-
-# IRF (Bootstrap)
-IRF.boot <- SVAR.sirf.boot(svar_chile, Amat = Amat_chile, Bmat = Bmat_chile, H, gamma, Y.boot)
-dev.new()
-plot.sirf.boot(IRF.boot, m, H)
-
-# Cumulative IRF (Bootstrap)
-IRF.c.boot <- SVAR.sirf.boot(SVAR, Amat, Bmat, H, gamma, Y.boot, cumulative = TRUE)
-dev.new()
-plot.sirf.boot(IRF.c.boot, m, H)
-
-# FEVD (Bootstrap)
-FEVD.boot <- SVAR.fevd.boot(SVAR, Amat, Bmat, H, gamma, Y.boot)
-plot.fevd.boot(FEVD.boot, m, H)
-
-# ERPT (Bootstrap): Log-differences
-ERPT.boot <- SVAR.erpt.boot(SVAR, Amat, Bmat, H.ERPT, 3, 2, gamma, Y.boot)
-plot.erpt.boot(ERPT.boot, H.ERPT)
-
-# # ERPT (Bootstrap): Log-levels
-# ERPT.boot <- SVAR.erpt.boot(SVAR, Amat, Bmat, H.ERPT, 3, 2, gamma, Y.boot, cumulative = TRUE)
-# plot.erpt.boot(ERPT.boot, H.ERPT)
-
-# IRFs
-irf_chile <- irf(svar_chile, impulse = "d_tpm_chile", response = colnames(var_chile_diff_ordered), 
-                 n.ahead = 12, ortho=TRUE, boot = TRUE)
-
-png(file.path(output, "IRF_Chile_nuev.png"), width = 1000, height = 800)
-plot(irf_chile)
 dev.off()
 
-# FEVD
-fevd_chile <- fevd(svar_chile, n.ahead = 12)
-png(file.path(output, "FEVD_Chile_nuev.png"), width = 1000, height = 800)
-plot(fevd_chile)
+# Bootstrap
+Y.boot_chile <- boot.replicate(var_chile_VAR, R, type)
+
+# IRF bootstrap
+IRF_boot_chile <- SVAR.sirf.boot(svar_chile, Amat_chile, Bmat_chile, H, gamma, Y.boot_chile)
+png(file.path(output, "IRF_Chile_Boot.png"), width = 1000, height = 800)
+plot.sirf.boot(IRF_boot_chile, m, H)
 dev.off()
 
-# ---------- México ---------- #
+# IRF acumulada bootstrap
+IRF_c_boot_chile <- SVAR.sirf.boot(svar_chile, Amat_chile, Bmat_chile, H, gamma, Y.boot_chile, cumulative = TRUE)
+png(file.path(output, "IRF_Chile_Boot_Cumulative.png"), width = 1000, height = 800)
+plot.sirf.boot(IRF_c_boot_chile, m, H)
+dev.off()
 
-var_mexico_VAR <- vars::VAR(var_mexico_diff_ordered, p = 1, type = "const")
+# FEVD bootstrap
+FEVD_boot_chile <- SVAR.fevd.boot(svar_chile, Amat_chile, Bmat_chile, H, gamma, Y.boot_chile)
+png(file.path(output, "FEVD_Chile_Boot.png"), width = 1000, height = 800)
+plot.fevd.boot(FEVD_boot_chile, m, H)
+dev.off()
+
+# ERPT bootstrap
+ERPT_boot_chile <- SVAR.erpt.boot(svar_chile, Amat_chile, Bmat_chile, H.ERPT, 3, 2, gamma, Y.boot_chile)
+png(file.path(output, "ERPT_Chile_Boot.png"), width = 1000, height = 800)
+plot.erpt.boot(ERPT_boot_chile, H.ERPT)
+dev.off()
+
+# ================================
+# 2(c) - SVAR e IRFs: MÉXICO
+# ================================
+
+# Estimación VAR reducido
+var_mexico_VAR <- vars::VAR(var_mexico_diff_ordered, p = p, type = "const")
+
+# Dimensiones del sistema
 m_mex <- var_mexico_VAR$K
+T_mex <- var_mexico_VAR$obs
 
+# Matrices estructurales (AB)
 Amat_mexico <- diag(m_mex)
 for (i in 2:m_mex) {
   for (j in 1:(i - 1)) {
     Amat_mexico[i, j] <- NA
   }
 }
-
 Bmat_mexico <- matrix(0, m_mex, m_mex)
 diag(Bmat_mexico) <- NA
 
-svar_mexico <- vars::SVAR(var_mexico_VAR, Amat = Amat_mexico, Bmat = Bmat_mexico, lrtest = FALSE)
+# Estimación SVAR estructural
+svar_mexico <- SVAR(var_mexico_VAR, Amat = Amat_mexico, Bmat = Bmat_mexico, lrtest = FALSE)
 
-irf_mexico <- irf(svar_mexico, impulse = "d_tpm_mexico", response = colnames(var_mexico_diff_ordered), 
-                  n.ahead = 12, ortho=TRUE, boot = TRUE) #AGREGAR SU D IDENTIFICACIÓN
-#irf_one <- irf(SVAR, response = "er", impulse = "pcom", n.ahead = 10, ortho = TRUE, boot = TRUE)
+# Matrices de impacto
+S_mex <- t(resid(var_mexico_VAR)) %*% resid(var_mexico_VAR) / (T_mex - m_mex * p - 1)
+P_mex <- solve(svar_mexico$A, svar_mexico$B)
+S.SVAR_mex <- P_mex %*% t(P_mex)
 
+# Parámetros estructurales
+pars.R_mex <- Bcoef(var_mexico_VAR)
+pars.S_mex <- solve(svar_mexico$A, pars.R_mex)
+
+# IRF
+IRF_mexico <- SVAR.sirf(svar_mexico, H)
 png(file.path(output, "IRF_Mexico.png"), width = 1000, height = 800)
-plot(irf_mexico)
+plot.sirf(IRF_mexico, m_mex, H)
 dev.off()
-#DEFINIR IRF_MEX2 CON LA FUNCIÓN
 
-fevd_mexico <- fevd(svar_mexico, n.ahead = 20)
+# IRF acumulada
+IRF_mexico_c <- SVAR.sirf(svar_mexico, H, cumulative = TRUE)
+png(file.path(output, "IRF_Mexico_Cumulative.png"), width = 1000, height = 800)
+plot.sirf(IRF_mexico_c, m_mex, H)
+dev.off()
+
+# FEVD
+FEVD_mexico <- SVAR.fevd(svar_mexico, H)
 png(file.path(output, "FEVD_Mexico.png"), width = 1000, height = 800)
-par(cex.main = 1.6,   
-    cex.lab = 1.7,    
-    cex.axis = 1,   
-    mar = c(4, 4, 2, 1))
-plot(fevd_mexico)
+plot.fevd(FEVD_mexico, m_mex, H)
 dev.off()
 
-#
+# HD
+HD_mexico <- SVAR.hd(svar_mexico)
+png(file.path(output, "HD_Mexico.png"), width = 1000, height = 800)
+plot.hd(var_mexico_diff, HD_mexico, m_mex)
+dev.off()
 
+# ERPT
+ERPT_mexico <- SVAR.erpt(svar_mexico, H.ERPT, 3, 2)
+png(file.path(output, "ERPT_Mexico.png"), width = 1000, height = 800)
+plot.erpt(ERPT_mexico, H.ERPT)
+dev.off()
+
+# Bootstrap
+Y.boot_mexico <- boot.replicate(var_mexico_VAR, R, type)
+
+# IRF bootstrap
+IRF_boot_mexico <- SVAR.sirf.boot(svar_mexico, Amat_mexico, Bmat_mexico, H, gamma, Y.boot_mexico)
+png(file.path(output, "IRF_Mexico_Boot.png"), width = 1000, height = 800)
+plot.sirf.boot(IRF_boot_mexico, m_mex, H)
+dev.off()
+
+# IRF acumulada bootstrap
+IRF_c_boot_mexico <- SVAR.sirf.boot(svar_mexico, Amat_mexico, Bmat_mexico, H, gamma, Y.boot_mexico, cumulative = TRUE)
+png(file.path(output, "IRF_Mexico_Boot_Cumulative.png"), width = 1000, height = 800)
+plot.sirf.boot(IRF_c_boot_mexico, m_mex, H)
+dev.off()
+
+# FEVD bootstrap
+FEVD_boot_mexico <- SVAR.fevd.boot(svar_mexico, Amat_mexico, Bmat_mexico, H, gamma, Y.boot_mexico)
+png(file.path(output, "FEVD_Mexico_Boot.png"), width = 1000, height = 800)
+plot.fevd.boot(FEVD_boot_mexico, m_mex, H)
+dev.off()
+
+# ERPT bootstrap
+ERPT_boot_mexico <- SVAR.erpt.boot(svar_mexico, Amat_mexico, Bmat_mexico, H.ERPT, 3, 2, gamma, Y.boot_mexico)
+png(file.path(output, "ERPT_Mexico_Boot.png"), width = 1000, height = 800)
+plot.erpt.boot(ERPT_boot_mexico, H.ERPT)
+dev.off()
 
