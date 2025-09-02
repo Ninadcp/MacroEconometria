@@ -3,6 +3,8 @@ library(readxl)
 library(lubridate)
 library(zoo)
 library(bsvarSIGNs)
+library(bsvarSIGNs)
+
 
 #Seteo directorio, limpio el environment y bajo el df
 setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
@@ -19,7 +21,7 @@ df <- finshocks %>%
   dplyr::select(date, vf_outside, vf_purged, var_ebp) %>% 
   filter(date >= "2002-07-10")
 
-rm(ebp, finshocks)
+rm(ebp, finshocks) #borro los dos excels que abrí m quedo solo con el df
 
 #BVAR con restricción de signo
 
@@ -75,7 +77,9 @@ for (i in 1:n_shocks) {
   shock_summaries [[i]] <- summarize_shock(shocks[i, ,])
 }
 
-df$vf_bvar <- c(NA, shock_summaries[[1]]["median"])
+#df$vf_bvar <- c(NA, shock_summaries[[1]]["median"]) #esto a Nina le da error
+df$vf_bvar <- c(NA, shock_summaries[[1]]$median)
+
 
 #************************************************************************************************************
 
@@ -109,8 +113,8 @@ ggsave("serie_diaria.png", width = 14, height = 16, units = "cm", dpi = 300)
 cor(df %>% select(vf_purged, vf_poor, vf_bvar), use = "pairwise.complete.obs")
 
 #Frecuencia mensual
-
-df %>%
+#faltaba definir el nombre del df_monthly
+df_monthly <- df %>%
   mutate(month = as.yearmon(date)) %>%
   group_by(month) %>%
   summarise(across(c(vf_purged, vf_poor, vf_bvar), ~ sum(., na.rm = TRUE))) %>%
