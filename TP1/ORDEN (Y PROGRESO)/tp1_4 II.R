@@ -1,0 +1,246 @@
+# ===============================
+# SVAR + IRF con IC - Chile y México
+# ===============================
+library(vars)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+source("TP1_UR.R")
+
+var_chile_diff <- var_chile_diff[, c("tpm_chile", "imacec", "ipc_sae", "tcn_chile", "embi_chile")]
+colnames(var_chile_diff) <- c("tpm", "imacec", "ipc_sae", "tcn", "embi")
+var_mexico_diff <- var_mexico_diff[, c("tpm_mexico", "igae", "inpc", "tcn_mexico", "embi_mexico")]
+colnames(var_mexico_diff) <- c("tpm", "igae", "inpc", "tcn", "embi")
+
+# ================================
+# IRF CHILE – TPM PRIMERO
+# ================================
+
+var_chile_diff <- var_chile_diff[, c("tpm", "imacec", "ipc_sae", "tcn", "embi")]
+p_chile <- VARselect(var_chile_diff, lag.max = 12, type = "const")$selection[2]
+VAR_chile <- VAR(var_chile_diff, p = p_chile, type = "const")
+
+m_c <- VAR_chile$K
+Amat_c <- diag(m_c)
+for (i in 2:m_c) {
+  for (j in 1:(i - 1)) {
+    Amat_c[i, j] <- NA
+  }
+}
+Bmat_c <- matrix(0, m_c, m_c)
+diag(Bmat_c) <- NA
+
+SVAR_chile <- SVAR(VAR_chile, Amat = Amat_c, Bmat = Bmat_c, lrtest = FALSE)
+IRF_chile <- irf(SVAR_chile, impulse = "tpm", response = colnames(var_chile_diff),
+                 n.ahead = 12, ortho = TRUE, cumulative = FALSE, boot = TRUE, ci = 0.95, runs = 100)
+
+h <- 0:12
+df_central <- as.data.frame(IRF_chile$irf$tpm); df_central$horizonte <- h
+df_lower   <- as.data.frame(IRF_chile$Lower$tpm); df_lower$horizonte <- h
+df_upper   <- as.data.frame(IRF_chile$Upper$tpm); df_upper$horizonte <- h
+
+variables <- colnames(df_central)[colnames(df_central) != "horizonte"]
+lista_dfs <- list()
+for (v in variables) {
+  lista_dfs[[v]] <- data.frame(
+    horizonte = h,
+    variable  = v,
+    respuesta = df_central[[v]],
+    inferior  = df_lower[[v]],
+    superior  = df_upper[[v]]
+  )
+}
+df_plot <- do.call(rbind, lista_dfs)
+
+graph_chile1 <- ggplot(df_plot, aes(x = horizonte, y = respuesta)) +
+  geom_line(color = "black", size = 1) +
+  geom_ribbon(aes(ymin = inferior, ymax = superior), fill = "grey", alpha = 0.2) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  facet_wrap(~ variable, labeller = as_labeller(c(
+    tpm = "Tasa de política monetaria",
+    imacec = "Actividad económica (IMACEC)",
+    ipc_sae = "Índice de Precios al Consumidor",
+    tcn = "Tipo de cambio nominal",
+    embi = "Riesgo país (EMBI)",
+    igae = "Actividad económica (IGAE)",
+    inpc = "Índice Nacional de Precios al Consumidor"
+  ))) +
+  labs(
+    title = "Funciones de Impulso-Respuesta ante un Shock en la Tasa de Política Monetaria – Chile",
+    subtitle = "Supuesto de identificación recursivo: la tasa de política monetaria es la primera variable del sistema",
+    x = "Horizonte (meses)", y = "Respuesta"
+  ) +
+  theme_minimal()
+ggsave("IRF_Chile_TPM_primero.png", graph_chile1, width = 10, height = 6, dpi = 300)
+
+# ================================
+# IRF CHILE – TPM ÚLTIMO
+# ================================
+var_chile_diff <- var_chile_diff[, c("imacec", "ipc_sae", "tcn", "embi", "tpm")]
+p_chile <- VARselect(var_chile_diff, lag.max = 12, type = "const")$selection[2]
+VAR_chile <- VAR(var_chile_diff, p = p_chile, type = "const")
+
+m_c <- VAR_chile$K
+Amat_c <- diag(m_c)
+for (i in 2:m_c) {
+  for (j in 1:(i - 1)) {
+    Amat_c[i, j] <- NA
+  }
+}
+Bmat_c <- matrix(0, m_c, m_c)
+diag(Bmat_c) <- NA
+
+SVAR_chile <- SVAR(VAR_chile, Amat = Amat_c, Bmat = Bmat_c, lrtest = FALSE)
+IRF_chile <- irf(SVAR_chile, impulse = "tpm", response = colnames(var_chile_diff),
+                 n.ahead = 12, ortho = TRUE, cumulative = FALSE, boot = TRUE, ci = 0.95, runs = 100)
+
+h <- 0:12
+df_central <- as.data.frame(IRF_chile$irf$tpm); df_central$horizonte <- h
+df_lower   <- as.data.frame(IRF_chile$Lower$tpm); df_lower$horizonte <- h
+df_upper   <- as.data.frame(IRF_chile$Upper$tpm); df_upper$horizonte <- h
+
+variables <- colnames(df_central)[colnames(df_central) != "horizonte"]
+lista_dfs <- list()
+for (v in variables) {
+  lista_dfs[[v]] <- data.frame(
+    horizonte = h,
+    variable  = v,
+    respuesta = df_central[[v]],
+    inferior  = df_lower[[v]],
+    superior  = df_upper[[v]]
+  )
+}
+df_plot <- do.call(rbind, lista_dfs)
+
+graph_chile2 <- ggplot(df_plot, aes(x = horizonte, y = respuesta)) +
+  geom_line(color = "black", size = 1) +
+  geom_ribbon(aes(ymin = inferior, ymax = superior), fill = "grey", alpha = 0.2) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  facet_wrap(~ variable, labeller = as_labeller(c(
+    tpm = "Tasa de política monetaria",
+    imacec = "Actividad económica (IMACEC)",
+    ipc_sae = "Índice de Precios al Consumidor (núcleo)",
+    tcn = "Tipo de cambio nominal",
+    embi = "Riesgo país (EMBI)"
+  ))) +  labs(
+    title = "Funciones de Impulso-Respuesta ante un Shock en la Tasa de Política Monetaria – Chile",
+    subtitle = "Supuesto de identificación recursivo: la tasa de política monetaria es la última variable del sistema",
+    x = "Horizonte (meses)", y = "Respuesta"
+  ) +
+  theme_minimal()
+ggsave("IRF_Chile_TPM_ultimo.png", graph_chile2, width = 10, height = 6, dpi = 300)
+
+# ================================
+# IRF MÉXICO – TPM PRIMERO
+# ================================
+var_mexico_diff <- var_mexico_diff[, c("tpm", "igae", "inpc", "tcn", "embi")]
+p_mex <- VARselect(var_mexico_diff, lag.max = 12, type = "const")$selection[2]
+VAR_mex <- VAR(var_mexico_diff, p = p_mex, type = "const")
+
+m_m <- VAR_mex$K
+Amat_m <- diag(m_m)
+for (i in 2:m_m) {
+  for (j in 1:(i - 1)) {
+    Amat_m[i, j] <- NA
+  }
+}
+Bmat_m <- matrix(0, m_m, m_m)
+diag(Bmat_m) <- NA
+
+SVAR_mex <- SVAR(VAR_mex, Amat = Amat_m, Bmat = Bmat_m, lrtest = FALSE)
+IRF_mex <- irf(SVAR_mex, impulse = "tpm", response = colnames(var_mexico_diff),
+               n.ahead = 12, ortho = TRUE, cumulative = FALSE, boot = TRUE, ci = 0.95, runs = 100)
+
+h <- 0:12
+df_central <- as.data.frame(IRF_mex$irf$tpm); df_central$horizonte <- h
+df_lower   <- as.data.frame(IRF_mex$Lower$tpm); df_lower$horizonte <- h
+df_upper   <- as.data.frame(IRF_mex$Upper$tpm); df_upper$horizonte <- h
+
+variables <- colnames(df_central)[colnames(df_central) != "horizonte"]
+lista_dfs <- list()
+for (v in variables) {
+  lista_dfs[[v]] <- data.frame(
+    horizonte = h,
+    variable  = v,
+    respuesta = df_central[[v]],
+    inferior  = df_lower[[v]],
+    superior  = df_upper[[v]]
+  )
+}
+df_plot <- do.call(rbind, lista_dfs)
+
+graph_mex1 <- ggplot(df_plot, aes(x = horizonte, y = respuesta)) +
+  geom_line(color = "black", size = 1) +
+  geom_ribbon(aes(ymin = inferior, ymax = superior), fill = "grey", alpha = 0.2) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  facet_wrap(~ variable, labeller = as_labeller(c(
+    tpm = "Tasa de política monetaria",
+    igae = "Actividad económica (IGAE)",
+    inpc = "Índice de Nacional de Precios al Consumidor",
+    tcn = "Tipo de cambio nominal",
+    embi = "Riesgo país (EMBI)"
+  ))) +  labs(
+    title = "Funciones de Impulso-Respuesta ante un Shock en la Tasa de Política Monetaria – México",
+    subtitle = "Supuesto de identificación recursivo: la tasa de política monetaria es la primera variable del sistema",
+    x = "Horizonte (meses)", y = "Respuesta"
+  ) +
+  theme_minimal()
+ggsave("IRF_Mexico_TPM_primero.png", graph_mex1, width = 10, height = 6, dpi = 300)
+
+# ================================
+# IRF MÉXICO – TPM ÚLTIMO
+# ================================
+var_mexico_diff <- var_mexico_diff[, c("igae", "inpc", "tcn", "embi", "tpm")]
+p_mex <- VARselect(var_mexico_diff, lag.max = 12, type = "const")$selection[2]
+VAR_mex <- VAR(var_mexico_diff, p = p_mex, type = "const")
+
+m_m <- VAR_mex$K
+Amat_m <- diag(m_m)
+for (i in 2:m_m) {
+  for (j in 1:(i - 1)) {
+    Amat_m[i, j] <- NA
+  }
+}
+Bmat_m <- matrix(0, m_m, m_m)
+diag(Bmat_m) <- NA
+
+SVAR_mex <- SVAR(VAR_mex, Amat = Amat_m, Bmat = Bmat_m, lrtest = FALSE)
+IRF_mex <- irf(SVAR_mex, impulse = "tpm", response = colnames(var_mexico_diff),
+               n.ahead = 12, ortho = TRUE, cumulative = FALSE, boot = TRUE, ci = 0.95, runs = 100)
+
+h <- 0:12
+df_central <- as.data.frame(IRF_mex$irf$tpm); df_central$horizonte <- h
+df_lower   <- as.data.frame(IRF_mex$Lower$tpm); df_lower$horizonte <- h
+df_upper   <- as.data.frame(IRF_mex$Upper$tpm); df_upper$horizonte <- h
+
+variables <- colnames(df_central)[colnames(df_central) != "horizonte"]
+lista_dfs <- list()
+for (v in variables) {
+  lista_dfs[[v]] <- data.frame(
+    horizonte = h,
+    variable  = v,
+    respuesta = df_central[[v]],
+    inferior  = df_lower[[v]],
+    superior  = df_upper[[v]]
+  )
+}
+df_plot <- do.call(rbind, lista_dfs)
+
+graph_mex2 <- ggplot(df_plot, aes(x = horizonte, y = respuesta)) +
+  geom_line(color = "black", size = 1) +
+  geom_ribbon(aes(ymin = inferior, ymax = superior), fill = "grey", alpha = 0.2) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  facet_wrap(~ variable, labeller = as_labeller(c(
+    tpm = "Tasa de política monetaria",
+    igae = "Actividad económica (IGAE)",
+    inpc = "Índice Nacional de Precios al Consumidor",
+    tcn = "Tipo de cambio nominal",
+    embi = "Riesgo país (EMBI)"
+  ))) +  labs(
+    title = "Funciones de Impulso-Respuesta ante un Shock en la Tasa de Política Monetaria – México",
+    subtitle = "Supuesto de identificación recursivo: la tasa de política monetaria es la última variable del sistema",
+    x = "Horizonte (meses)", y = "Respuesta"
+  ) +
+  theme_minimal()
+ggsave("IRF_Mexico_TPM_ultimo.png", graph_mex2, width = 10, height = 6, dpi = 300)
+
