@@ -1,0 +1,221 @@
+# CARGAR PAQUETES NECESARIOS
+library(tidyverse)
+library(lubridate)
+library(zoo)
+
+# Y YA HICISTE EL HP FILTER O PREPROCESAMIENTO EN 'datos_hp_cycle'
+datos_hp_cycle <- datos[, c("smdi", "gdp_socios", "gdp_agro_pc", "gdp_resto_pc", 
+                            "employment", "cons_pc", "invest_pc", "reer")]
+# PASO 1: Extraer el shock (usamos residual AR(2) como en los ejercicios anteriores)
+smdi <- datos_hp_cycle[, "smdi"]
+AR <- arima(smdi, order = c(2, 0, 0), include.mean = TRUE)
+epsilon <- residuals(AR)
+
+trimestre <- cycle(smdi)  # valores 1, 2, 3, 4
+
+# PASO 3: Construir variables de interacción (shock en cada trimestre)
+shock_q1 <- ifelse(trimestre == 1, epsilon, 0)
+shock_q2 <- ifelse(trimestre == 2, epsilon, 0)
+shock_q3 <- ifelse(trimestre == 3, epsilon, 0)
+shock_q4 <- ifelse(trimestre == 4, epsilon, 0)
+
+# PASO 4: Armar la base final
+datos <- as.matrix(cbind(
+  window(datos_hp_cycle, start = c(2005, 1), end = c(2023, 4)),
+  shock_q1, shock_q2, shock_q3, shock_q4
+))
+
+# OPCIONAL: renombrar columnas
+colnames(datos) <- c(colnames(datos_hp_cycle), "shock_q1", "shock_q2", "shock_q3", "shock_q4")
+
+# PASO 5: Parámetros LP
+H <- 20        
+p <- 1          
+gamma <- 0.95   
+
+# PASO 6: Estimación por variable de interés
+
+lp_shock4 <- function(y, shocks, p, H, gamma = 0.95) {
+  library(sandwich)
+  library(dplyr)
+  library(tibble)
+  
+  z <- qnorm(1 - (1 - gamma) / 2)
+  
+  y <- as.numeric(y)
+  shocks <- apply(shocks, 2, as.numeric)
+  
+  pe_list <- list()
+  lb_list <- list()
+  ub_list <- list()
+  
+  for (i in 1:4) {
+    shock <- shocks[, i]
+    
+    pe <- rep(NA, H + 1)
+    lb <- rep(NA, H + 1)
+    ub <- rep(NA, H + 1)
+    
+    for (h in 0:H) {
+      y_lead <- dplyr::lead(y, h)
+      
+      df <- tibble(
+        y_lead = y_lead,
+        shock = shock
+      )
+      
+      # Crear rezagos de y y del shock
+      for (j in 1:p) {
+        df[[paste0("lags_y", j)]] <- dplyr::lag(y, j)
+        df[[paste0("lags_s", j)]] <- dplyr::lag(shock, j)
+      }
+      
+      df <- df %>% drop_na()
+      
+      fmla <- as.formula(paste("y_lead ~ -1 +", paste(colnames(df)[-1], collapse = " + ")))
+      
+      fit <- lm(fmla, data = df)
+      se <- sqrt(diag(sandwich::vcovHAC(fit)))
+      
+      pe[h + 1] <- coef(fit)["shock"]
+      lb[h + 1] <- pe[h + 1] - z * se["shock"]
+      ub[h + 1] <- pe[h + 1] + z * se["shock"]
+    }
+    
+    pe_list[[i]] <- pe
+    lb_list[[i]] <- lb
+    ub_list[[i]] <- ub
+  }
+  
+  names(pe_list) <- paste0("pe", 1:4)
+  names(lb_list) <- paste0("lb", 1:4)
+  names(ub_list) <- paste0("ub", 1:4)
+  
+  return(c(pe_list, lb_list, ub_list))
+}
+
+titulos <- list(
+  smdi           = "SMDI",
+  gdp_socios     = "PIB de Socios Comerciales",
+  gdp_agro_pc    = "PIB Agropecuario per cápita",
+  gdp_resto_pc   = "PIB Resto per cápita",
+  employment     = "Empleo",
+  cons_pc        = "Consumo per cápita",
+  invest_pc      = "Inversión per cápita",
+  reer           = "Tipo de Cambio Real Multilateral"
+)
+
+
+for (var in names(titulos)) {
+  y <- as.numeric(datos[, var])
+  
+  res <- lp_shock4(
+    y = y,
+    shocks = datos[, c("shock_q1", "shock_q2", "shock_q3", "shock_q4")],
+    p = p,
+    H = H
+  )
+  
+  df_plot <- bind_rows(
+    tibble(h = 0:H, trimestre = "T1", pe = res$pe1, lb = res$lb1, ub = res$ub1),
+    tibble(h = 0:H, trimestre = "T2", pe = res$pe2, lb = res$lb2, ub = res$ub2),
+    tibble(h = 0:H, trimestre = "T3", pe = res$pe3, lb = res$lb3, ub = res$ub3),
+    tibble(h = 0:H, trimestre = "T4", pe = res$pe4, lb = res$lb4, ub = res$ub4)
+  ) %>% mutate(variable = titulos[[var]])
+  
+  g <- ggplot(df_plot, aes(x = h, y = pe, color = trimestre, fill = trimestre)) +
+    geom_line(linewidth = 1) +
+    geom_ribbon(aes(ymin = lb, ymax = ub), alpha = 0.3, color = NA) +
+    facet_wrap(~ trimestre, scales = "free_y") +
+    scale_color_brewer(palette = "Set1") +
+    scale_fill_brewer(palette = "Set1") +
+    labs(x = "Horizonte (trimestres)", y = "Respuesta estimada (%)",
+         title = paste("IRF diferenciada por trimestre -", titulos[[var]])) +
+    theme_minimal(base_size = 13) +
+    theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+  
+  print(g)
+  ggsave(paste0("Graficos_estacionales/", var, "_irf_por_trimestre.png"), g, width = 10, height = 5)
+}
+
+# CARGA DE PAQUETES Y PREPROCESAMIENTO
+library(tidyverse)
+library(lubridate)
+library(zoo)
+
+# Asumimos que ya tenés cargada y procesada 'datos_hp_cycle'
+# con las columnas: smdi, gdp_agro_pc, employment, etc.
+
+# Shock como residual AR(2) del SMDI
+smdi <- datos_hp_cycle[, "smdi"]
+AR <- arima(smdi, order = c(2, 0, 0), include.mean = TRUE)
+epsilon <- residuals(AR)
+
+# Determinar trimestre calendario
+trimestre <- cycle(smdi)
+
+# Construir dummy de temporada agrícola crítica (T1 = trimestres 4 y 1)
+T1 <- as.numeric(trimestre == 1 | trimestre == 4)  # Octubre-Marzo
+T2 <- 1 - T1
+
+# Shocks interactuados (residuales diferenciados por temporada)
+shock_agricola <- T1 * epsilon
+shock_no_agricola <- T2 * epsilon
+
+# Base final
+datos <- as.matrix(cbind(
+  window(datos_hp_cycle, start = c(2005, 1), end = c(2023, 4)),
+  shock_agricola,
+  shock_no_agricola
+))
+
+colnames(datos) <- c(colnames(datos_hp_cycle), "shock_agricola", "shock_no_agricola")
+
+# PARÁMETROS LP
+H <- 20
+p <- 1
+gamma <- 0.95
+
+source("PS3_LP_Tools.R") # Asegurate de tener la función `lp_pw()` disponible
+
+titulos <- list(
+  smdi           = "SMDI",
+  gdp_socios     = "PIB de Socios Comerciales",
+  gdp_agro_pc    = "PIB Agropecuario per cápita",
+  gdp_resto_pc   = "PIB Resto per cápita",
+  employment     = "Empleo",
+  cons_pc        = "Consumo per cápita",
+  invest_pc      = "Inversión per cápita",
+  reer           = "Tipo de Cambio Real Multilateral"
+)
+
+# LOOP DE ESTIMACIÓN Y GRÁFICO
+for (var in names(titulos)) {
+  Y <- datos[, c("shock_agricola", "shock_no_agricola", var)]
+  D <- T1[(p + 1):length(T1)]  # Dummy de temporada crítica
+  
+  res <- lp.pw(Y = Y, D = D, p = p, idx.s = 1, idx.r = 3, H = H, gamma = gamma)
+  
+  df_plot <- bind_rows(
+    tibble(h = 0:H, temporada = "Siembra/Cosecha", pe = res$pe[, "D"], lb = res$lb[, "D"], ub = res$ub[, "D"]),
+    tibble(h = 0:H, temporada = "Fuera de temporada", pe = res$pe[, "1-D"], lb = res$lb[, "1-D"], ub = res$ub[, "1-D"])
+  ) %>% mutate(variable = titulos[[var]])
+  
+  g <- ggplot(df_plot, aes(x = h, y = pe, color = temporada, fill = temporada)) +
+    geom_line(linewidth = 1) +
+    geom_ribbon(aes(ymin = lb, ymax = ub), alpha = 0.3, color = NA) +
+    facet_wrap(~ temporada, scales = "free_y") +
+    scale_color_brewer(palette = "Dark2") +
+    scale_fill_brewer(palette = "Dark2") +
+    labs(
+      x = "Horizonte (trimestres)",
+      y = "Respuesta estimada (%)",
+      title = paste("IRF diferenciada por temporada agrícola -", titulos[[var]])
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+  
+  print(g)
+  ggsave(paste0("Graficos_estacionales/", var, "_por_temporada_agricola.png"), g, width = 10, height = 5)
+}
+
