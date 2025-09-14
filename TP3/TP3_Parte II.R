@@ -97,10 +97,19 @@ plot_var_vs_shock <- function(df, var, var_label) {
 vars <- c("imacec_g", "infl", "tc_g", "embi_ch", "tot_g", "tasa_bancaria", "tpm")
 labels <- c("IMACEC (%)", "Inflación (%)", "Tipo de cambio (%)", "EMBI (pb)", 
             "Términos de intercambio (%)", "Tasa bancaria (%)", "TPM (%)")
+
 if (!dir.exists("graficos II.1")) dir.create("graficos II.1") # Creo la carpeta
 
+# hay uno d los gráficos q no se entiende mucho por la escala
 for (i in seq_along(vars)) {
   p <- plot_var_vs_shock(df_all, vars[i], labels[i])
   ggsave(paste0("graficos II.1/", vars[i], ".png"), plot = p, width = 10, height = 6, dpi = 300)
 }
+
+#### punto 2 #####
+
+df_all <- df_all %>% 
+  filter(date < as.Date("2020-01-01")) # trimmeo después la pandemia
+
+
 
